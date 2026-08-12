@@ -222,3 +222,179 @@ the true emitter position.
 Direct nonlinear AOA measurement modeling was more effective than
 applying a linear Kalman Filter to preprocessed least-squares position
 estimates.
+
+
+## Experiment 06 - FIM-based Candidate Waypoint Selection
+
+### Setup
+
+- Current UAV position:
+  [40.0, 21.0]
+
+- EKF emitter estimate:
+  [29.8700, 30.2655]
+
+- Number of candidate waypoints: 8
+- Candidate radius: 5 m
+- AOA noise standard deviation: 2 deg
+- Waypoint metric: determinant of cumulative Fisher Information Matrix
+
+### Results
+
+Candidate FIM scores:
+
+- Candidate 0: 26449.273
+- Candidate 1: 26849.731
+- Candidate 2: 27714.337
+- Candidate 3: 28093.588
+- Candidate 4: 26765.997
+- Candidate 5: 26294.528
+- Candidate 6: 26211.992
+- Candidate 7: 26270.153
+
+Best waypoint:
+
+[36.4645, 24.5355]
+
+Best FIM score:
+
+28093.588
+
+### Observation
+
+The FIM-based waypoint evaluation selected candidate 3,
+located to the upper-left of the current UAV position.
+
+The selected waypoint maximized the determinant of the cumulative
+Fisher Information Matrix, indicating that the expected AOA
+measurement at this position provides the largest increase in
+localization information among the tested candidates.
+
+### Next Step
+
+Apply candidate waypoint selection repeatedly to generate an
+information-aware UAV trajectory.
+
+
+
+## Experiment 07 - FIM-based Adaptive Path Planning
+
+### Setup
+
+- True emitter position: (30, 30) m
+- AOA noise standard deviation: 2 deg
+- Localization method: Extended Kalman Filter
+- Candidate waypoints: 8
+- Candidate radius: 5 m
+- Adaptive planning steps: 20
+- Waypoint selection metric: determinant of cumulative Fisher Information Matrix
+- EKF initial covariance P: 100.0
+- EKF process noise Q: 0.01
+
+### Results
+
+- Curved-path EKF mean error: 2.502 m
+
+- FIM-path initial estimate:
+  [33.5405, 34.5245]
+
+- FIM-path final EKF estimate:
+  [30.0028, 29.9643]
+
+- FIM-path EKF mean error: 1.404 m
+- FIM-path final localization error: 0.036 m
+
+- Mean error reduction compared with curved-path EKF:
+  approximately 43.9%
+
+### Observation
+
+The FIM-based adaptive path achieved a lower mean localization error
+than the predefined curved UAV trajectory.
+
+At each planning step, candidate waypoints were evaluated using the
+determinant of the cumulative Fisher Information Matrix.
+
+The waypoint with the highest FIM score was selected, a new AOA
+measurement was generated at that position, and the EKF estimate was
+updated.
+
+The EKF estimate converged from approximately (33.54, 34.52) m
+to (30.00, 29.96) m, close to the true emitter position.
+
+### Conclusion
+
+FIM-based adaptive waypoint selection reduced the EKF mean localization
+error from 2.502 m to 1.404 m in this simulation.
+
+This corresponds to an approximately 43.9% reduction in mean
+localization error compared with the predefined curved trajectory.
+
+The result demonstrates that UAV trajectory design can improve
+AOA-based emitter localization by selecting measurement positions
+with more informative observation geometry.
+
+### Next Step
+
+Calculate the Cramer-Rao Lower Bound (CRLB) from the Fisher Information
+Matrix and compare the theoretical localization uncertainty of the
+predefined curved path and the FIM-based adaptive path.
+
+
+## Experiment 08 - Equal-Budget CRLB Comparison
+
+### Setup
+
+- True emitter position: (30, 30) m
+- AOA noise standard deviation: 2 deg
+- Measurement budget: 25
+- Baseline trajectory: predefined curved UAV path
+- Adaptive trajectory: FIM-based UAV path
+- CRLB metric: sqrt(trace(inv(FIM)))
+- Equal number of measurement positions used for both trajectories
+
+### Results
+
+- Measurement budget: 25
+
+- Curved-path CRLB position bound:
+  0.3379 m
+
+- FIM-path CRLB position bound:
+  0.0553 m
+
+- CRLB reduction:
+  83.62%
+
+### Observation
+
+The FIM-based trajectory achieved a substantially lower CRLB position
+bound than the predefined curved trajectory under the same measurement
+budget.
+
+The curved trajectory used 25 uniformly sampled measurement positions
+from the original trajectory, while the FIM-based trajectory also
+contained 25 measurement positions.
+
+Because both trajectories were evaluated using the same number of
+measurements, the difference in CRLB primarily reflects the effect of
+measurement geometry rather than the number of observations.
+
+### Conclusion
+
+The FIM-based adaptive trajectory reduced the theoretical position
+uncertainty bound from 0.3379 m to 0.0553 m.
+
+This corresponds to an 83.62% reduction in the CRLB position bound
+compared with the predefined curved trajectory under the same
+measurement budget.
+
+Combined with the EKF experiment, the results indicate that
+information-aware UAV path planning can improve both theoretical
+localization observability and simulated emitter localization
+performance.
+
+### Next Step
+
+Integrate the completed AOA measurement, EKF localization, and
+FIM-based path planning modules into a ROS2 node and topic architecture.
