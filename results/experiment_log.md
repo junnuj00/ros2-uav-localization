@@ -398,3 +398,433 @@ performance.
 
 Integrate the completed AOA measurement, EKF localization, and
 FIM-based path planning modules into a ROS2 node and topic architecture.
+
+
+## Experiment 9 — ROS2 Multi-Node Localization Integration
+
+### Objective
+
+Extend the existing standalone AOA localization simulation into a ROS2-based distributed architecture.
+
+### ROS2 Architecture
+
+The original localization pipeline was separated into independent ROS2 nodes.
+
+#### UAV Position Publisher
+
+- Node: `uav_position_publisher`
+- Publishes: `/uav_position`
+
+#### AOA Measurement Node
+
+- Node: `aoa_measurement_node`
+- Subscribes: `/uav_position`
+- Publishes: `/aoa_measurement`
+
+#### EKF Localization Node
+
+- Node: `ekf_localization_node`
+- Uses UAV position and AOA measurements
+- Publishes: `/emitter_estimate`
+
+### Result
+
+The UAV position, AOA measurement, and EKF localization functions were successfully separated into independent ROS2 nodes.
+
+The following topics were verified:
+
+- `/uav_position`
+- `/aoa_measurement`
+- `/emitter_estimate`
+- `/rosout`
+
+The experiment confirmed that the original standalone localization algorithm could operate through ROS2 topic-based communication.
+
+### Conclusion
+
+The standalone localization pipeline was successfully converted into a ROS2 multi-node architecture.
+
+This provided the communication structure required for subsequent trajectory experiments and closed-loop active localization.
+
+
+## Experiment 10 — Trajectory Geometry and EKF Localization
+
+### Objective
+
+Evaluate how UAV trajectory geometry affects AOA-based EKF localization performance.
+
+### Straight Trajectory
+
+The initial ROS2 experiment used an approximately straight UAV trajectory.
+
+Although the EKF continuously received AOA measurements, the emitter estimate converged to a biased position around:
+
+`(26, 29)` m
+
+while the true emitter position was:
+
+`(30, 30)` m.
+
+This indicated that simply increasing the number of AOA measurements was not sufficient for accurate localization.
+
+Successive measurements collected along a nearly straight trajectory provided similar observation geometry, limiting the geometric diversity available to the estimator.
+
+### Curved Trajectory
+
+The UAV trajectory was then modified to continuously change the observation geometry relative to the emitter.
+
+Example result:
+
+```text
+UAV=(98.50, 19.99) EKF=(30.313, 29.939)
+UAV=(100.00, 19.84) EKF=(30.372, 29.733)
+UAV=(103.50, 18.66) EKF=(30.373, 29.742)
+UAV=(107.50, 16.02) EKF=(30.388, 29.461)
+```
+
+The EKF estimate moved substantially closer to the true emitter position compared with the straight-trajectory experiment.
+
+### Result
+
+Changing the UAV trajectory improved the diversity of AOA observation angles and resulted in more accurate emitter localization.
+
+### Conclusion
+
+The experiment demonstrated that AOA localization performance depends not only on the estimator but also on the geometry of the measurements collected by the moving sensor.
+
+This result motivated the implementation of an active trajectory planner that selects UAV observation positions based on their expected information contribution.
+
+
+## Experiment 11 — FIM-Based Active Localization
+
+### Objective
+
+Replace the predefined UAV trajectory with an active waypoint planner based on the Fisher Information Matrix (FIM).
+
+### Method
+
+For each candidate UAV position, the expected information contribution of an AOA measurement was calculated using:
+
+`FIM = H^T R^-1 H`
+
+where:
+
+- `H` is the AOA measurement Jacobian.
+- `R` is the measurement noise covariance.
+
+Sixteen candidate positions were generated around the current UAV position.
+
+For each candidate, the predicted information matrix was evaluated using the log determinant of the FIM.
+
+A candidate with a larger log determinant was considered to provide more informative observation geometry for emitter localization.
+
+The selected candidate was published through:
+
+`/next_waypoint`
+
+The localization pipeline was extended to:
+
+```text
+UAV Position
+    ↓
+AOA Measurement
+    ↓
+EKF Localization
+    ↓
+FIM Planner
+    ↓
+Next Waypoint
+    ↓
+UAV Motion
+```
+
+### Result
+
+The FIM planner successfully generated waypoints using the current UAV position and EKF emitter estimate.
+
+Instead of following a predefined trajectory, the UAV could select its next observation position according to the expected information contribution of each candidate.
+
+### Conclusion
+
+The localization system was extended from passive estimation with a predefined trajectory to closed-loop active sensing.
+
+The current emitter estimate could now influence the UAV's next observation position, providing the basis for information-driven trajectory planning.
+
+
+## Experiment 12 — Closed-Loop Waypoint Control
+
+### Objective
+
+Stabilize UAV waypoint following in the closed-loop FIM planning system.
+
+### Initial Problem
+
+During the initial closed-loop experiment, the FIM planner continuously generated new waypoints while the UAV was still moving toward the previous waypoint.
+
+As a result, the target direction changed frequently and the UAV showed unstable and repetitive motion.
+
+The planner and UAV controller were operating correctly as individual components, but the planner was updating the target faster than the UAV could reach it.
+
+### Arrival-Based Replanning
+
+The waypoint control strategy was modified to:
+
+```text
+Plan
+→ Move
+→ Reach Waypoint
+→ Re-plan
+```
+
+After a waypoint was selected, the planner waited until the UAV reached the current target before generating the next waypoint.
+
+This prevented continuous waypoint replacement during UAV movement.
+
+### Immediate Direction Reversal
+
+After arrival-based replanning was introduced, another repetitive behavior was observed:
+
+```text
+A → B → A → B
+```
+
+Although the UAV now completed each waypoint command, the FIM criterion could select a new waypoint in the direction opposite to the previous movement.
+
+To reduce this behavior, a reversal penalty was added to the candidate evaluation.
+
+The planner score was modified to:
+
+`score = information score - reversal penalty`
+
+The movement direction of each candidate was compared with the previous movement direction using a dot product.
+
+Candidates representing strong backward motion received a larger penalty.
+
+### Result
+
+Arrival-based replanning eliminated continuous target changes while the UAV was moving.
+
+The reversal penalty also reduced immediate back-and-forth motion between consecutive waypoints.
+
+### Conclusion
+
+The experiment showed that maximizing measurement information alone was not sufficient to generate a practical UAV trajectory.
+
+Additional motion constraints were required to convert FIM-based waypoint selection into stable closed-loop UAV movement.
+
+However, longer repetitive trajectories involving previously visited regions were still observed, motivating the addition of a revisit penalty in the next experiment.
+
+
+## Experiment 13 — Revisit Suppression and FIM Trajectory Improvement
+
+### Objective
+
+Reduce longer repetitive trajectories that were not prevented by the immediate reversal penalty.
+
+### Problem
+
+Although the reversal penalty reduced immediate back-and-forth motion, the UAV could still return to recently visited regions after several waypoint transitions.
+
+For example:
+
+```text
+A → B → C → D → A
+```
+
+This behavior could not be prevented by the reversal penalty alone because returning to a previously visited location does not necessarily correspond to an immediate direction reversal.
+
+### Revisit Penalty
+
+A history of recently visited waypoints was added to the FIM planner.
+
+Each candidate position was compared with the recent waypoint history.
+
+Candidates located near recently visited positions received an additional penalty.
+
+The candidate evaluation score was modified to:
+
+`score = information score - reversal penalty - revisit penalty`
+
+The planner parameters used in the experiment were:
+
+- Candidate step size: `5 m`
+- Number of candidate directions: `16`
+- Reversal penalty weight: `1.5`
+- Revisit penalty weight: `2.0`
+- Revisit radius: `3 m`
+- Recent waypoint history: `8`
+- Minimum emitter distance: `3 m`
+
+### Minimum Emitter-Distance Constraint
+
+A minimum-distance constraint was also introduced.
+
+Candidate positions located too close to the current emitter estimate were rejected.
+
+This prevented the planner from repeatedly selecting observation positions directly around the estimated emitter location.
+
+### Final Trajectory
+
+Example regions visited during the improved closed-loop trajectory included:
+
+```text
+(38.7, 25.8)
+→ (34.1, 23.9)
+→ (29.5, 25.8)
+→ (26.0, 29.3)
+→ (27.9, 33.9)
+→ (23.3, 35.8)
+→ (21.3, 31.2)
+→ (23.3, 26.6)
+→ (26.8, 23.1)
+→ (31.4, 21.2)
+→ (33.3, 25.8)
+→ (33.3, 30.8)
+→ (31.4, 35.4)
+```
+
+Compared with the earlier repetitive trajectories, the UAV collected observations from a wider range of directions around the emitter region.
+
+### Result
+
+The combination of the reversal penalty and revisit penalty reduced short repetitive waypoint patterns.
+
+The minimum emitter-distance constraint also prevented candidate selection from collapsing directly toward the estimated emitter position.
+
+### Conclusion
+
+FIM-based information maximization was successfully combined with simple trajectory constraints to generate a more diverse observation path.
+
+The resulting planner preserved information-driven waypoint selection while reducing undesirable repetitive motion.
+
+
+## Experiment 14 — Final ROS2 Closed-Loop Verification
+
+### Objective
+
+Verify the complete ROS2-based active emitter localization system after integrating the EKF estimator, FIM planner, and UAV waypoint controller.
+
+### Final ROS2 Architecture
+
+The complete system consisted of four ROS2 nodes:
+
+- `uav_position_publisher`
+- `aoa_measurement_node`
+- `ekf_localization_node`
+- `fim_planner_node`
+
+The main communication topics were:
+
+- `/uav_position`
+- `/aoa_measurement`
+- `/emitter_estimate`
+- `/next_waypoint`
+
+All four nodes were integrated into a single ROS2 launch file and executed using:
+
+```powershell
+ros2 launch uav_localization_ros localization.launch.py
+```
+
+### Localization Result
+
+During the closed-loop experiment, the EKF estimate converged close to the true emitter position.
+
+One observed result was:
+
+```text
+True emitter = (30.000, 30.000)
+EKF estimate = (29.978, 29.976)
+```
+
+The corresponding Euclidean localization error was approximately:
+
+`0.033 m`
+
+This value represents one observed simulation result rather than an averaged statistical performance measurement.
+
+### ROS2 Runtime Debugging
+
+During final testing, discontinuous UAV position values were observed on `/uav_position`.
+
+The ROS2 graph was inspected using:
+
+```powershell
+ros2 topic info /uav_position -v
+```
+
+The inspection showed:
+
+```text
+Publisher count: 2
+```
+
+Two ROS2 launch instances were simultaneously publishing UAV positions to the same topic.
+
+This caused position messages from two independent UAV trajectories to appear alternately on `/uav_position`.
+
+After terminating the duplicated ROS2 processes and restarting a single launch instance, the topic configuration was verified again:
+
+```text
+Publisher count: 1
+Subscription count: 2
+```
+
+The two subscribers were:
+
+- `aoa_measurement_node`
+- `fim_planner_node`
+
+The UAV trajectory then returned to continuous waypoint-following behavior.
+
+### Final Trajectory Verification
+
+With a single ROS2 launch instance, the UAV followed the FIM-selected waypoints continuously.
+
+The final trajectory showed movement through multiple observation directions around the emitter region rather than the previously observed short repetitive patterns.
+
+The approximately `1 m` position change between consecutive updates was also consistent with the configured UAV speed and update interval.
+
+### Result
+
+The complete closed-loop pipeline operated successfully:
+
+```text
+UAV Position
+    ↓
+AOA Measurement
+    ↓
+EKF Localization
+    ↓
+FIM-Based Waypoint Planning
+    ↓
+UAV Waypoint Following
+    ↓
+New Observation Geometry
+    ↓
+AOA Measurement
+```
+
+The final system successfully integrated:
+
+- ROS2 multi-node communication
+- Simulated AOA measurements
+- EKF emitter localization
+- FIM-based waypoint selection
+- Waypoint-following UAV motion
+- Arrival-based replanning
+- Direction reversal suppression
+- Recent-position revisit suppression
+- Minimum emitter-distance constraint
+- ROS2 launch integration
+- Closed-loop active localization
+
+### Conclusion
+
+The standalone emitter localization simulation was successfully extended into a ROS2-based closed-loop active localization system.
+
+The experiments demonstrated that localization performance depends not only on the estimation algorithm but also on the observation geometry generated by the UAV trajectory.
+
+By using the current emitter estimate to select informative future observation positions, the system progressed from passive localization with a predefined trajectory to active sensing with feedback-based trajectory planning.
+
+The final ROS2 integration also demonstrated that runtime communication issues, such as duplicated publishers, can be distinguished from localization algorithm problems through ROS2 graph and topic inspection.
