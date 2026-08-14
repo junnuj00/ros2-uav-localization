@@ -77,7 +77,7 @@ The project was developed incrementally.
     CRLB Evaluation
           |
           v
-    Monte Carlo Quantitative Evaluation
+    Repeated Quantitative Evaluation
 
 Each stage was introduced after identifying limitations in the previous approach.
 
@@ -186,7 +186,7 @@ A Fisher Information Matrix-based planner was implemented to evaluate candidate 
 
 At each planning step, candidate waypoints are generated around the current UAV position.
 
-The planner evaluates the expected information contribution of each candidate and selects the waypoint with the highest FIM-based score.
+The standalone simulation initially evaluates 8 candidate directions and selects the waypoint with the highest FIM-based information score.
 
 The planning process is:
 
@@ -220,13 +220,15 @@ The planning process is:
 
 The planner therefore adapts the UAV trajectory according to the current localization estimate rather than following only a predefined path.
 
+The later ROS2 closed-loop implementation increases the directional resolution to 16 candidate directions.
+
 ---
 
 ## 6. FIM Adaptive Trajectory Result
 
 A FIM-based adaptive path was compared with a predefined curved trajectory.
 
-Earlier simulation results showed:
+An earlier individual simulation run produced:
 
     Curved-path EKF mean error: 2.502 m
     FIM-path EKF mean error:    1.404 m
@@ -241,7 +243,7 @@ with a final localization error of approximately:
 
 This experiment showed that actively selecting measurement positions could improve localization performance.
 
-Because this result was obtained from an individual simulation run, additional statistical evaluation was later performed.
+Because these values came from an individual simulation run, repeated statistical evaluation was subsequently performed.
 
 ---
 
@@ -337,7 +339,7 @@ The FIM-based adaptive trajectory achieved the lowest average EKF localization e
 
 ## Localization Error Distribution
 
-![Monte Carlo Localization Error Distribution](results/plots/mean_error_distribution.png)
+![Repeated Localization Error Distribution](results/plots/mean_error_distribution.png)
 
 The box plot shows the distribution of mean EKF localization errors across the repeated experiments.
 
@@ -498,12 +500,14 @@ The algorithms developed in this repository were subsequently extended into a RO
 
 The ROS2 implementation separates the localization pipeline into independent nodes for:
 
-- UAV position publishing
+- UAV position publishing and waypoint following
 - AOA measurement generation
 - EKF emitter localization
 - FIM waypoint planning
 
-The resulting ROS2 feedback structure is:
+In the ROS2 implementation, the AOA node combines the UAV observation coordinates with the corresponding noisy AOA measurement before publishing the measurement data to the EKF.
+
+The resulting feedback structure is:
 
     UAV Position
          |
@@ -521,15 +525,11 @@ The resulting ROS2 feedback structure is:
          |
          +----------> UAV Movement
 
-This separates sensing, estimation, planning, and motion into ROS2 nodes communicating through topics.
-
 The ROS2 implementation is maintained separately from this simulation and algorithm-development repository.
 
 ---
 
 ## Key Findings
-
-The main findings from the project are:
 
 1. AOA emitter localization is strongly affected by measurement geometry.
 
