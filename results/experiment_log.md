@@ -828,3 +828,222 @@ The experiments demonstrated that localization performance depends not only on t
 By using the current emitter estimate to select informative future observation positions, the system progressed from passive localization with a predefined trajectory to active sensing with feedback-based trajectory planning.
 
 The final ROS2 integration also demonstrated that runtime communication issues, such as duplicated publishers, can be distinguished from localization algorithm problems through ROS2 graph and topic inspection.
+
+
+## Experiment 15 - Monte Carlo Quantitative Evaluation
+
+### Objective
+
+Evaluate the robustness of the EKF localization system and quantitatively compare the localization performance of three UAV trajectory strategies:
+
+1. Straight trajectory
+2. Predefined curved trajectory
+3. FIM-based adaptive trajectory
+
+Previous experiments demonstrated improved localization performance using FIM-based trajectory planning in individual simulation runs.
+
+However, a single simulation result may depend on a particular realization of the AOA measurement noise.
+
+Therefore, a Monte Carlo evaluation was performed to determine whether the performance improvement remains consistent across multiple random noise realizations.
+
+### Experimental Setup
+
+The evaluation was performed using 30 independent Monte Carlo runs.
+
+The same basic localization conditions were used for all trajectory strategies.
+
+    Monte Carlo runs: 30
+
+    True emitter position:
+    (30.0, 30.0)
+
+    AOA noise standard deviation:
+    2.0 deg
+
+    Measurement budget:
+    25 measurements
+
+    Estimator:
+    Extended Kalman Filter (EKF)
+
+For each Monte Carlo run, a different random seed was used.
+
+The same seed was applied to the Straight, Curved, and FIM experiments within each run so that the trajectory strategies were evaluated under comparable random noise conditions.
+
+The measurement budget was fixed at 25 measurements for all three trajectory strategies.
+
+### Evaluated Trajectories
+
+#### Straight Trajectory
+
+A predefined straight UAV trajectory was used as the first baseline.
+
+The UAV moved along a fixed horizontal path while collecting AOA measurements.
+
+#### Curved Trajectory
+
+A predefined curved trajectory was used as the second baseline.
+
+The original curved trajectory was downsampled to 25 observation positions so that the number of measurements was identical to the other trajectory strategies.
+
+#### FIM-Based Adaptive Trajectory
+
+The FIM trajectory used the adaptive planning method developed in the previous experiments.
+
+The first five measurements were used to initialize the emitter estimate.
+
+    Bootstrap measurements: 5
+    Adaptive FIM measurements: 20
+    Total measurements: 25
+
+After initialization, the planner repeatedly selected the next UAV observation position using the Fisher Information Matrix.
+
+At each planning step:
+
+    Current UAV position
+            |
+            v
+    Current EKF emitter estimate
+            |
+            v
+    Generate candidate waypoints
+            |
+            v
+    Evaluate cumulative FIM
+            |
+            v
+    Select waypoint with maximum information score
+            |
+            v
+    Collect new AOA measurement
+            |
+            v
+    Update EKF estimate
+
+This process continued until the 25-measurement budget was reached.
+
+### Evaluation Metrics
+
+Two primary localization metrics were evaluated.
+
+    Mean EKF localization error
+    Final EKF localization error
+
+The mean localization error represents the average Euclidean distance between the EKF estimate and the true emitter position during each experiment.
+
+The final localization error represents the Euclidean distance between the final EKF estimate and the true emitter position.
+
+The mean, standard deviation, median, best result, and worst result were calculated across the 30 Monte Carlo runs.
+
+### Results
+
+#### Straight Trajectory
+
+    Mean EKF error: 2.7536 m
+    Standard deviation: 1.0683 m
+    Median mean error: 2.4192 m
+    Best mean error: 1.3294 m
+    Worst mean error: 5.3902 m
+    Mean final error: 0.5344 m
+    Final error standard deviation: 0.3423 m
+
+#### Curved Trajectory
+
+    Mean EKF error: 3.0638 m
+    Standard deviation: 1.6750 m
+    Median mean error: 2.6522 m
+    Best mean error: 1.4523 m
+    Worst mean error: 9.3617 m
+    Mean final error: 0.3231 m
+    Final error standard deviation: 0.2032 m
+
+#### FIM-Based Adaptive Trajectory
+
+    Mean EKF error: 1.1988 m
+    Standard deviation: 0.7270 m
+    Median mean error: 1.0108 m
+    Best mean error: 0.3618 m
+    Worst mean error: 2.8162 m
+    Mean final error: 0.0892 m
+    Final error standard deviation: 0.0462 m
+
+### Mean Error Comparison
+
+The average EKF localization errors across the 30 Monte Carlo runs were:
+
+    Straight: 2.7536 m
+    Curved:   3.0638 m
+    FIM:      1.1988 m
+
+The FIM-based adaptive trajectory reduced the mean EKF localization error by:
+
+    56.46% compared with the Straight trajectory
+    60.87% compared with the Curved trajectory
+
+### Final Error Comparison
+
+The average final localization errors were:
+
+    Straight: 0.5344 m
+    Curved:   0.3231 m
+    FIM:      0.0892 m
+
+The FIM trajectory therefore achieved an average final localization error of approximately 9 cm.
+
+The standard deviation of the final error was also substantially smaller for the FIM trajectory.
+
+    Straight: 0.3423 m
+    Curved:   0.2032 m
+    FIM:      0.0462 m
+
+### Error Distribution
+
+The Monte Carlo error distribution was also examined using a box plot.
+
+The FIM-based trajectory produced both a lower median localization error and a narrower error distribution compared with the predefined trajectories.
+
+    Median mean error:
+
+    Straight: 2.4192 m
+    Curved:   2.6522 m
+    FIM:      1.0108 m
+
+The smaller standard deviation of the FIM results indicates that the adaptive trajectory produced more consistent localization performance across different AOA noise realizations.
+
+### Interpretation
+
+The Monte Carlo experiment confirmed that the improvement observed in the previous FIM trajectory experiments was not limited to a single random noise realization.
+
+The FIM-based trajectory achieved the lowest mean localization error, the lowest final localization error, and the smallest standard deviation among the three evaluated trajectory strategies.
+
+The predefined Curved trajectory did not outperform the Straight trajectory in terms of mean EKF error under the equal 25-measurement budget.
+
+This result indicates that simply introducing curvature into the UAV trajectory does not guarantee improved localization performance.
+
+Instead, the observation geometry must provide useful information about the emitter location.
+
+The FIM planner explicitly evaluates this expected information and adaptively selects observation positions based on the current EKF estimate.
+
+### Result
+
+The 30-run Monte Carlo evaluation demonstrated that FIM-based adaptive trajectory planning consistently improved AOA emitter localization performance.
+
+    Mean EKF localization error:
+
+    Straight: 2.7536 m
+    Curved:   3.0638 m
+    FIM:      1.1988 m
+
+The FIM trajectory reduced the mean localization error by 56.46% relative to the Straight trajectory and 60.87% relative to the Curved trajectory.
+
+The FIM trajectory also achieved the lowest average final localization error:
+
+    0.0892 m
+
+### Conclusion
+
+The experiment demonstrated that active trajectory planning based on the Fisher Information Matrix provides a measurable and repeatable localization advantage under noisy AOA measurements.
+
+Unlike predefined trajectories, the FIM planner adapts the UAV observation geometry according to the current emitter estimate and selects measurement positions expected to provide greater localization information.
+
+The Monte Carlo results therefore provide quantitative evidence that the localization improvement observed in the earlier FIM experiments remains consistent across multiple random measurement-noise realizations.
